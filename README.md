@@ -13,7 +13,7 @@ Emotion Chat is a real-time web application that detects your facial expression 
 ## ✨ Features
 
 - **Live Emotion Detection** — Uses your webcam and face-api.js to detect 7 emotions in real time: happy, sad, angry, fearful, disgusted, surprised, and neutral
-- **Emotion-Aware AI Responses** — Detected emotion is injected into the prompt sent to Google Gemini, so the AI acknowledges how you're feeling before answering
+- **Emotion-Aware AI Responses** — Detected emotion is injected into the prompt sent to Groq (Llama 3.3), so the AI acknowledges how you're feeling before answering
 - **Emotion-Matched Voice** — Text-to-speech via ElevenLabs adjusts voice tone and style based on your emotion, with a browser speech fallback
 - **Reactive Avatar** — An animated canvas avatar changes its expression and mouth movement to match the current emotion and speaking state
 - **Conversation Memory** — Maintains short-term chat history so the AI can follow context across messages
@@ -27,7 +27,8 @@ Emotion Chat is a real-time web application that detects your facial expression 
 | Frontend | React + Vite |
 | Backend | Express (Node.js) |
 | Emotion Detection | face-api.js |
-| AI / Chat | Google Gemini (`gemini-2.5-flash`) |
+| AI / Chat | Groq (`llama-3.3-70b-versatile`) |
+| Chat Titles | Groq (`llama-3.1-8b-instant`) |
 | Text-to-Speech | ElevenLabs API |
 | Avatar | HTML Canvas (custom) |
 
@@ -38,7 +39,7 @@ Emotion Chat is a real-time web application that detects your facial expression 
 ### Prerequisites
 
 - Node.js (v18+)
-- A Google Gemini API key
+- A Groq API key
 - An ElevenLabs API key
 
 ### Installation
@@ -54,7 +55,7 @@ npm install
 Create a `.env` file in the root directory:
 
 ```env
-GEMINI_API_KEY=your_gemini_api_key_here
+GROQ_API_KEY=your_groq_api_key_here
 ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
 ```
 
@@ -87,7 +88,7 @@ emotion-chat/
 │   │   ├── useEmotion.js      # Emotion detection logic
 │   │   └── useSpeech.js       # TTS playback logic
 │   ├── utils/
-│   │   └── buildPrompt.js     # Constructs Gemini system prompt from emotion
+│   │   └── buildPrompt.js     # Constructs the system prompt from emotion
 │   └── App.jsx                # Main app orchestration
 └── public/
     └── models/                # face-api.js model weights
@@ -101,7 +102,7 @@ emotion-chat/
 2. The top detected emotion and confidence score are tracked in state
 3. When you send a message, `buildPrompt.js` constructs a system prompt that includes your emotion, confidence level, and tone guidelines
 4. The prompt + chat history are sent to the Express backend
-5. The backend calls Google Gemini and returns an emotionally aware response
+5. The backend calls Groq and returns an emotionally aware response
 6. The response text is sent to ElevenLabs for voice synthesis with emotion-adjusted settings
 7. The avatar animates its expression and lip movement while audio plays
 
