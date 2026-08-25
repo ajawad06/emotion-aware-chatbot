@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import "./App.css";
 import ChatInput from "./components/ChatInput.jsx";
 import ChatWindow from "./components/ChatWindow.jsx";
@@ -7,17 +7,61 @@ import Avatar from "./components/Avatar.jsx";
 import { buildSystemPrompt } from "./utils/buildPrompt.js";
 import useSpeech from "./hooks/useSpeech.js";
 
+const GREETING = {
+  role: "assistant",
+  content:
+    "Hi there! I'm your emotionally intelligent assistant. I can see how you're feeling through your camera and I'll do my best to respond in a way that suits your mood. Feel free to share whatever's on your mind. I'm here to listen and help.",
+  emotion: null,
+};
+
+// Stable per-browser session id so the conversation persists across reloads.
+function getSessionId() {
+  let id = localStorage.getItem("adina_session_id");
+  if (!id) {
+    id =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `sess_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem("adina_session_id", id);
+  }
+  return id;
+}
+
 // Main app component - coordinates emotion detection, chat, and audio response
 export default function App() {
   const { speak, stop, isSpeaking } = useSpeech();
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      content:
-        "Hi there! I'm your emotionally intelligent assistant. I can see how you're feeling through your camera and I'll do my best to respond in a way that suits your mood. Feel free to share whatever's on your mind. I'm here to listen and help.",
-      emotion: null,
-    },
-  ]);
+  const sessionId = useMemo(getSessionId, []);
+  const [messages, setMessages] = useState([GREETING]);
+
+  // Restore prior conversation from the server on startup so the avatar
+  // "remembers" earlier sessions. Falls back to the greeting if empty.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch(
+          `http://localhost:3001/api/history?sessionId=${encodeURIComponent(sessionId)}&limit=100`,
+        );
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!cancelled && Array.isArray(data.messages) && data.messages.length) {
+          setMessages([
+            GREETING,
+            ...data.messages.map((m) => ({
+              role: m.role,
+              content: m.content,
+              emotion: m.emotion ?? null,
+            })),
+          ]);
+        }
+      } catch {
+        // Offline / server not up yet — keep the default greeting.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
   const [currentEmotion, setCurrentEmotion] = useState({
     emotion: "neutral",
     confidence: 0,
@@ -67,6 +111,7 @@ export default function App() {
           messages: historyForRequest,
           systemPrompt,
           emotion: { label: userEmotion, score: userConfidence },
+          sessionId,
         }),
       });
 

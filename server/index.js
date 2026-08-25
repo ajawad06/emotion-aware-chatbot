@@ -3,6 +3,7 @@ const cors = require("cors");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const dotenv = require("dotenv");
 const path = require("path");
+const { logMessage, getRecentMessages, getEmotionStats } = require("./db");
 
 const envPath = path.resolve(__dirname, "../.env");
 dotenv.config({ path: envPath });
@@ -149,7 +150,7 @@ function toGeminiHistory(messages) {
 // Chat endpoint: generates emotion-aware responses using Gemini
 app.post("/api/chat", async (req, res) => {
   try {
-    const { messages, systemPrompt, emotion } = req.body || {};
+    const { messages, systemPrompt, emotion, sessionId } = req.body || {};
 
     if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({ error: "Missing GEMINI_API_KEY in .env" });
@@ -162,11 +163,23 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const lastMessage = messages[messages.length - 1];
-    if (lastMessage && lastMessage.role === "user" && emotion) {
-      lastMessage.content = `
+    if (lastMessage && lastMessage.role === "user") {
+      // Persist the user's turn with the emotion detected at send time,
+      // before we wrap the content with the model-facing emotion tag.
+      logMessage({
+        sessionId,
+        role: "user",
+        content: lastMessage.content,
+        emotion: emotion?.label,
+        confidence: emotion?.score,
+      });
+
+      if (emotion) {
+        lastMessage.content = `
     [USER_TEXT]: ${lastMessage.content}
     [USER_FACIAL_EXPRESSION]: ${emotion.label} (Confidence: ${emotion.score})
   `.trim();
+      }
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -181,11 +194,44 @@ app.post("/api/chat", async (req, res) => {
 
     const text = result?.response?.text?.() || "";
 
+    // Persist the assistant's reply so the full conversation is durable.
+    logMessage({ sessionId, role: "assistant", content: text });
+
     return res.json({ text });
   } catch (err) {
     return res.status(500).json({
       error: err?.message || String(err),
     });
+  }
+});
+
+// Return recent conversation history so the client can restore prior
+// sessions on startup (the avatar "remembers" earlier conversations).
+app.get("/api/history", (req, res) => {
+  try {
+    const sessionId = req.query.sessionId || "default";
+    const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+    const messages = getRecentMessages(sessionId, limit).map((m) => ({
+      role: m.role,
+      content: m.content,
+      emotion: m.emotion,
+      confidence: m.confidence,
+      ts: m.ts,
+    }));
+    return res.json({ messages });
+  } catch (err) {
+    return res.status(500).json({ error: err?.message || String(err) });
+  }
+});
+
+// Aggregate psychosocial metrics (emotion distribution + timeline) —
+// the raw material for the long-term analytics conveyed to care staff.
+app.get("/api/stats", (req, res) => {
+  try {
+    const sessionId = req.query.sessionId || null;
+    return res.json(getEmotionStats(sessionId));
+  } catch (err) {
+    return res.status(500).json({ error: err?.message || String(err) });
   }
 });
 
